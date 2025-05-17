@@ -2,6 +2,7 @@ import os
 import random
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton as KB, InlineKeyboardMarkup as KM
+from pyrogram.errors import UserIsBlocked
 
 # Bot credentials from environment variables
 API_ID = int(os.environ.get("API_ID"))
@@ -21,6 +22,12 @@ PRANK_IMAGES = [
     "https://i.ibb.co/jvD6s7KN/x.jpg"
 ]
 
+# Owner ID (apna Telegram numeric ID daal do)
+OWNER_ID = 6567162029  # << yaha apni ID daal dena
+
+# Registered users list
+USERS_FILE = "users.txt"
+
 # Caption
 START_CAPTION = """
 <b>🎓 Premium Education Content Extractor Bot 🎓</b>
@@ -34,7 +41,7 @@ START_CAPTION = """
 <b>🚀 Get started by exploring the apps below:</b>
 """
 
-# Keyboards with unique callback data
+# Home Keyboard
 def home():
     return KM([
         [KB("🌟 VIP (Normal App) 🤖", "page_1"), KB("🚀 PRO (Special App) 🚀", "page_2")],
@@ -42,6 +49,7 @@ def home():
         [KB("❌ Close ❌", "close")]
     ])
 
+# Page 1
 def page_1():
     return KM([
         [KB("🌐 All Appx API APP [Web Url or API] 🌐", "prank_1")],
@@ -59,6 +67,7 @@ def page_1():
         [KB("⏩ Next Page ➡️", "page_2")]
     ])
 
+# Page 2
 def page_2():
     return KM([
         [KB("🎯 Allen New V2 🎯", "prank_16")],
@@ -79,6 +88,7 @@ def page_2():
         [KB("🔙 Back Page ⬅️", "page_1"), KB("➡️ Next Page ➡️", "page_3")]
     ])
 
+# Page 3
 def page_3():
     return KM([
         [KB("🌐 Appx All API (Nothing Required) 🌐", "prank_35")],
@@ -106,43 +116,67 @@ def page_3():
 # /start command
 @app.on_message(filters.command("start"))
 async def start(client, message):
-    await message.reply_photo(
-        photo=START_IMAGE,
-        caption=START_CAPTION,
-        reply_markup=home()
-    )
+    user_id = message.from_user.id
+    if not os.path.exists(USERS_FILE):
+        open(USERS_FILE, "w").close()
+    with open(USERS_FILE, "r") as f:
+        users = f.read().splitlines()
+    if str(user_id) not in users:
+        with open(USERS_FILE, "a") as f:
+            f.write(f"{user_id}\n")
+        await client.send_message(OWNER_ID, f"👤 New user joined: [{message.from_user.first_name}](tg://user?id={user_id}) (`{user_id}`)", parse_mode="markdown")
+    await message.reply_photo(photo=START_IMAGE, caption=START_CAPTION, reply_markup=home())
 
 # Navigation handlers
 @app.on_callback_query(filters.regex("^page_"))
-async def handle_pages(client, callback_query):
-    page = int(callback_query.data.split("_")[1])
+async def handle_pages(client, cb):
+    page = int(cb.data.split("_")[1])
     if page == 1:
-        await callback_query.message.edit_reply_markup(page_1())
+        await cb.message.edit_reply_markup(page_1())
     elif page == 2:
-        await callback_query.message.edit_reply_markup(page_2())
+        await cb.message.edit_reply_markup(page_2())
     elif page == 3:
-        await callback_query.message.edit_reply_markup(page_3())
-    await callback_query.answer()
+        await cb.message.edit_reply_markup(page_3())
+    await cb.answer()
 
 @app.on_callback_query(filters.regex("^home$"))
-async def go_home(client, callback_query):
-    await callback_query.message.edit_reply_markup(home())
-    await callback_query.answer()
+async def go_home(client, cb):
+    await cb.message.edit_reply_markup(home())
+    await cb.answer()
 
 @app.on_callback_query(filters.regex("^close$"))
-async def close_menu(client, callback_query):
-    await callback_query.message.delete()
+async def close_menu(client, cb):
+    await cb.message.delete()
 
 # All prank buttons handler
 @app.on_callback_query(filters.regex("^prank_"))
-async def send_prank(client, callback_query):
+async def send_prank(client, cb):
     prank_image = random.choice(PRANK_IMAGES)
-    await client.send_photo(
-        chat_id=callback_query.from_user.id,
-        photo=prank_image,
-        reply_to_message_id=callback_query.message.id
-    )
-    await callback_query.answer("Prank delivered!")
+    await client.send_photo(chat_id=cb.from_user.id, photo=prank_image, reply_to_message_id=cb.message.id)
+    await cb.answer("Prank delivered!")
 
-print("Bot is running with updated unique callbacks and random prank images...")
+# Broadcast command
+@app.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
+async def broadcast(client, message):
+    if len(message.command) < 2:
+        await message.reply("Usage: /broadcast your_message_here")
+        return
+    text_to_send = message.text.split(" ", 1)[1]
+    if not os.path.exists(USERS_FILE):
+        await message.reply("Koi user registered nahi hai.")
+        return
+    with open(USERS_FILE, "r") as f:
+        users = f.read().splitlines()
+    sent, failed = 0, 0
+    for user in users:
+        try:
+            await client.send_message(int(user), text_to_send)
+            sent += 1
+        except UserIsBlocked:
+            failed += 1
+        except Exception:
+            failed += 1
+    await message.reply(f"✅ Broadcast done.\nSuccess: {sent}\nFailed: {failed}")
+
+print("Bot is running with user notification, apps & broadcast system...")
 app.run()
