@@ -4,12 +4,15 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton as KB, InlineKeyboardMarkup as KM
 from pyrogram.enums import ParseMode
 
-# Configuration (Set these in Render Environment Variables)
+# Configuration (Environment Variables)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))  # 0 if not set
 
-# Initialize client
+# Initialize Client
 app = Client("prank_bot", bot_token=BOT_TOKEN)
+
+# User database (temporary, in-memory)
+user_db = set()
 
 # Image URLs
 START_IMAGE = "https://i.ibb.co/XZKGjP03/x.jpg"
@@ -21,7 +24,7 @@ PRANK_IMAGES = [
     "https://i.ibb.co/jvD6s7KN/x.jpg"
 ]
 
-# Start message
+# Start Caption
 START_CAPTION = """
 <b>🎓 Premium Education Content Extractor Bot 🎓</b>
 
@@ -34,14 +37,17 @@ START_CAPTION = """
 <b>🚀 Get started by exploring the apps below:</b>
 """
 
-# Keyboard layouts with ALL original apps and emojis
+# Home Menu
 def home():
-    return KM([
+    buttons = [
         [KB("🌟 VIP (Normal App) 🤖", "page_1"), KB("🚀 PRO (Special App) 🚀", "page_2")],
-        [KB("⚡ Legend (No Login Required) ⚡", "page_3")],
-        [KB("🔐 Admin Panel", "admin_panel") if ADMIN_ID else None]
-    ])
+        [KB("⚡ Legend (No Login Required) ⚡", "page_3")]
+    ]
+    if ADMIN_ID:
+        buttons.append([KB("🔐 Admin Panel", "admin_panel")])
+    return KM(buttons)
 
+# Page 1 Menu
 def page_1():
     return KM([
         [KB("🌐 All Appx API APP [Web Url or API] 🌐", "appx_api")],
@@ -59,6 +65,7 @@ def page_1():
         [KB("⏩ Next Page ➡️", "page_2")]
     ])
 
+# Page 2 Menu
 def page_2():
     return KM([
         [KB("🎯 Allen New V2 🎯", "allen_v2")],
@@ -79,6 +86,7 @@ def page_2():
         [KB("🔙 Back Page ⬅️", "page_1"), KB("➡️ Next Page ➡️", "page_3")]
     ])
 
+# Page 3 Menu
 def page_3():
     return KM([
         [KB("🌐 Appx All API (Nothing Required) 🌐", "appx_free")],
@@ -103,23 +111,24 @@ def page_3():
         [KB("🔙 Back Page ⬅️", "page_2"), KB("🏠 Home 🏠", "home")]
     ])
 
-# Notification function
+# Notify Admin
 async def notify_admin(user, action="started"):
-    try:
-        await app.send_message(
-            ADMIN_ID,
-            f"👤 <b>New User {action}:</b>\n\n"
-            f"• Name: {user.first_name}\n"
-            f"• ID: <code>{user.id}</code>\n"
-            f"• Username: @{user.username}" if user.username else "• No username",
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        print(f"Error sending notification: {e}")
+    if ADMIN_ID:
+        try:
+            await app.send_message(
+                ADMIN_ID,
+                f"👤 <b>User {action}:</b>\n\n"
+                f"• Name: {user.first_name}\n"
+                f"• ID: <code>{user.id}</code>\n"
+                f"• Username: @{user.username or 'N/A'}",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            print(f"Error notifying admin: {e}")
 
-# Start command
+# Start Command
 @app.on_message(filters.command("start"))
-async def start(client, message):
+async def start_cmd(client, message):
     user = message.from_user
     if user.id not in user_db:
         user_db.add(user.id)
@@ -131,97 +140,72 @@ async def start(client, message):
         reply_markup=home()
     )
 
-# Forward all messages to admin
+# Forward Messages
 @app.on_message(filters.private & ~filters.command(["start", "broadcast", "users"]))
-async def forward_to_admin(client, message):
-    if message.from_user.id not in user_db:
-        user_db.add(message.from_user.id)
-        await notify_admin(message.from_user, "messaged")
-    
-    try:
+async def forward_msg(client, message):
+    user = message.from_user
+    if user.id not in user_db:
+        user_db.add(user.id)
+        await notify_admin(user, "messaged")
+    if ADMIN_ID:
         await app.send_message(
             ADMIN_ID,
-            f"📩 <b>New Message from {message.from_user.first_name}:</b>\n\n"
+            f"📩 <b>New Message from {user.first_name}:</b>\n\n"
             f"<code>{message.text}</code>\n\n"
-            f"User ID: <code>{message.from_user.id}</code>",
+            f"User ID: <code>{user.id}</code>",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(f"Error forwarding message: {e}")
 
-# Broadcast command (admin only)
+# Broadcast Command
 @app.on_message(filters.command("broadcast") & filters.user(ADMIN_ID))
 async def broadcast(client, message):
-    if len(message.text.split()) < 2:
+    text = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
+    if not text:
         await message.reply("Usage: /broadcast your_message")
         return
-    
-    text = message.text.split(maxsplit=1)[1]
-    success = 0
-    failed = 0
-    
-    for user_id in user_db:
+
+    success, fail = 0, 0
+    for user_id in list(user_db):
         try:
             await app.send_message(user_id, text)
             success += 1
         except:
-            failed += 1
-            user_db.remove(user_id)  # Remove inactive users
-    
-    await message.reply(
-        f"📢 <b>Broadcast Report:</b>\n\n"
-        f"• Total users: {len(user_db)}\n"
-        f"• ✅ Success: {success}\n"
-        f"• ❌ Failed: {failed}",
-        parse_mode=ParseMode.HTML
-    )
+            fail += 1
+            user_db.remove(user_id)
+    await message.reply(f"✅ Broadcast done!\nSuccess: {success}, Failed: {fail}")
 
-# Show user count (admin only)
+# User Count
 @app.on_message(filters.command("users") & filters.user(ADMIN_ID))
-async def show_users(client, message):
+async def users_count(client, message):
     await message.reply(f"👥 Total users: {len(user_db)}")
 
-# Admin panel
+# Admin Panel
 @app.on_callback_query(filters.regex("^admin_panel$"))
-async def admin_panel(client, callback_query):
-    if callback_query.from_user.id != ADMIN_ID:
-        await callback_query.answer("⚠️ Access denied!", show_alert=True)
+async def admin_panel(client, callback):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Access Denied!", show_alert=True)
         return
-    
-    await callback_query.message.edit_reply_markup(
-        KM([
-            [KB("📢 Broadcast", "broadcast_panel"), KB("👥 User Count", "user_count")],
-            [KB("🔙 Back", "home")]
-        ])
-    )
-    await callback_query.answer()
+    await callback.message.edit_reply_markup(KM([
+        [KB("📢 Broadcast", "broadcast_panel"), KB("👥 User Count", "user_count")],
+        [KB("🔙 Back", "home")]
+    ]))
+    await callback.answer()
 
-# Prank handler for ALL app buttons
+# Callback Handler
 @app.on_callback_query()
-async def handle_callbacks(client, callback_query):
-    data = callback_query.data
-    
-    # Navigation handlers
+async def callback_handler(client, callback):
+    data = callback.data
     if data == "home":
-        await callback_query.message.edit_reply_markup(home())
+        await callback.message.edit_reply_markup(home())
     elif data.startswith("page_"):
-        page = int(data.split("_")[1])
-        if page == 1:
-            await callback_query.message.edit_reply_markup(page_1())
-        elif page == 2:
-            await callback_query.message.edit_reply_markup(page_2())
-        elif page == 3:
-            await callback_query.message.edit_reply_markup(page_3())
-    
-    # Send prank for ALL app buttons
-    elif not data.startswith(("page_", "admin_", "broadcast_", "user_")):
-        await callback_query.message.reply_photo(
+        pages = {"page_1": page_1(), "page_2": page_2(), "page_3": page_3()}
+        await callback.message.edit_reply_markup(pages.get(data))
+    elif not data.startswith(("admin_", "broadcast_", "user_")):
+        await callback.message.reply_photo(
             photo=random.choice(PRANK_IMAGES),
-            caption="Processing your request...",
-            reply_to_message_id=callback_query.message.id
+            caption="Processing your request..."
         )
-    
-    await callback_query.answer()
+    await callback.answer()
 
-print("✅ Bot is running with ALL features and apps!")
+print("✅ Bot is running successfully!")
 app.run()
