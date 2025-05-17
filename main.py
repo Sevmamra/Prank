@@ -23,7 +23,7 @@ PRANK_IMAGES = [
 ]
 
 # Owner ID (apna Telegram numeric ID daal do)
-OWNER_ID = 123456789  # << yaha apni ID daal dena
+OWNER_ID = 6567162029  # << yaha apni ID daal dena
 
 # Registered users list
 USERS_FILE = "users.txt"
