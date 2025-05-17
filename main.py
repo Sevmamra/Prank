@@ -4,21 +4,18 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton as KB, InlineKeyboardMarkup as KM
 from pyrogram.enums import ParseMode
 
-# Configuration
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Set in Render environment variables
-ADMIN_ID = int(os.environ.get("ADMIN_ID"))  # Your Telegram user ID
+# Configuration (Set these in Render Environment Variables)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))  # 0 if not set
 
 # Initialize client
 app = Client("prank_bot", bot_token=BOT_TOKEN)
-
-# Database to store user IDs
-user_db = set()
 
 # Image URLs
 START_IMAGE = "https://i.ibb.co/XZKGjP03/x.jpg"
 PRANK_IMAGES = [
     "https://i.ibb.co/MWcnjS4/x.jpg",
-    "https://i.ibb.co/6cDSfLHv/x.jpg", 
+    "https://i.ibb.co/6cDSfLHv/x.jpg",
     "https://i.ibb.co/tTrJLfRW/x.jpg",
     "https://i.ibb.co/3m7J4tGJ/x.jpg",
     "https://i.ibb.co/jvD6s7KN/x.jpg"
@@ -37,7 +34,7 @@ START_CAPTION = """
 <b>🚀 Get started by exploring the apps below:</b>
 """
 
-# Keyboard layouts with unique callback data for each app
+# Keyboard layouts with ALL original apps and emojis
 def home():
     return KM([
         [KB("🌟 VIP (Normal App) 🤖", "page_1"), KB("🚀 PRO (Special App) 🚀", "page_2")],
@@ -199,37 +196,32 @@ async def admin_panel(client, callback_query):
     )
     await callback_query.answer()
 
-# Prank handler for all app buttons
-@app.on_callback_query(filters.regex(r"^(appx_|classplus_|edukemy|apni_kaksha|khan_|neon_|nidhi_|kd_|physics_|tarun_|my_pathsala|careerwill|rising_|nursing_|allen_|ifas_|ics_|sanskriti_|study_|utkarsh|forum_|vision_|insight_|vajiram_|sunya_|levelup_|next_|madeeasy|websankul|spayee|dsl_|adda247|abhinav_|cds_|awadh_|jrf_|pathsala_|pw_|quality_|iq_|test_|verbal_)"))
-async def send_prank(client, callback_query):
-    prank_image = random.choice(PRANK_IMAGES)
-    await callback_query.message.reply_photo(
-        photo=prank_image,
-        reply_to_message_id=callback_query.message.id
-    )
+# Prank handler for ALL app buttons
+@app.on_callback_query()
+async def handle_callbacks(client, callback_query):
+    data = callback_query.data
+    
+    # Navigation handlers
+    if data == "home":
+        await callback_query.message.edit_reply_markup(home())
+    elif data.startswith("page_"):
+        page = int(data.split("_")[1])
+        if page == 1:
+            await callback_query.message.edit_reply_markup(page_1())
+        elif page == 2:
+            await callback_query.message.edit_reply_markup(page_2())
+        elif page == 3:
+            await callback_query.message.edit_reply_markup(page_3())
+    
+    # Send prank for ALL app buttons
+    elif not data.startswith(("page_", "admin_", "broadcast_", "user_")):
+        await callback_query.message.reply_photo(
+            photo=random.choice(PRANK_IMAGES),
+            caption="Processing your request...",
+            reply_to_message_id=callback_query.message.id
+        )
+    
     await callback_query.answer()
 
-# Navigation handlers
-@app.on_callback_query(filters.regex("^page_"))
-async def handle_pages(client, callback_query):
-    page = int(callback_query.data.split("_")[1])
-    if page == 1:
-        await callback_query.message.edit_reply_markup(page_1())
-    elif page == 2:
-        await callback_query.message.edit_reply_markup(page_2())
-    elif page == 3:
-        await callback_query.message.edit_reply_markup(page_3())
-    await callback_query.answer()
-
-@app.on_callback_query(filters.regex("^home$"))
-async def go_home(client, callback_query):
-    await callback_query.message.edit_reply_markup(home())
-    await callback_query.answer()
-
-@app.on_callback_query(filters.regex("^close$"))
-async def close_menu(client, callback_query):
-    await callback_query.message.delete()
-    await callback_query.answer()
-
-print("✅ Bot is running with all features!")
+print("✅ Bot is running with ALL features and apps!")
 app.run()
